@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils_3d/control_utils_3d.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+
+  <link rel="stylesheet" href="./style.css">
+</head>
+
+<body>
+  </head>
+
+  <body>
+    <div class="main-container">
+      <div>
+        <video class="input_video"></video>
+      </div>
+      <div>
+        <canvas class="output_canvas" width="400px" height="235px"></canvas>
+      </div>
+      <div>
+        <div class="landmark-grid-container"></div>
+      </div>
+    </div>
+    <canvas class="webgl"></canvas>
+    <script src="./three.min.js"></script>
+    <script>
+      // Canvas
+      const canvas = document.querySelector('canvas.webgl')
+
+      // Sizes
+      const sizes = {
+        width: 400,
+        height: 300
+      }
+
+      // Scene
+      const scene = new THREE.Scene()
+
+      // Object
+      const arrayOfSphere = [];
+      for (let index = 0; index < 33; index++) {
+        const sphere = new THREE.Mesh(
+          new THREE.SphereGeometry(0.1, 4, 4),
+          new THREE.MeshBasicMaterial({
+            color: 0xff0000
+          })
+        )
+        arrayOfSphere.push(sphere);
+        scene.add(sphere);
+      }
+      // Camera
+      const cameraThree = new THREE.PerspectiveCamera(75, sizes.width / sizes.height)
+      cameraThree.position.set(2, -3, 8);
+      scene.add(cameraThree)
+
+      // Controls
+      // const controls = new OrbitControls(cameraThree, canvas);
+      // controls.enableDamping = true;
+
+      // Renderer
+      const renderer = new THREE.WebGLRenderer({
+        canvas: canvas
+      })
+      renderer.setSize(sizes.width, sizes.height)
+      renderer.render(scene, cameraThree)
+      
+
+
+
+      let time = Date.now();
+      const clock = new THREE.Clock();
+
+    </script>
+  </body>
+  <script type="module">
+    const videoElement = document.getElementsByClassName('input_video')[0];
+    const canvasElement = document.getElementsByClassName('output_canvas')[0];
+    const canvasCtx = canvasElement.getContext('2d');
+    const landmarkContainer = document.getElementsByClassName('landmark-grid-container')[0];
+    const grid = new LandmarkGrid(landmarkContainer);
+
+    function onResults(results) {
+      if (!results.poseLandmarks) {
+        grid.updateLandmarks([]);
+        return;
+      }
+      // console.log(results.poseLandmarks)
+
+      canvasCtx.save();
+      canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+      canvasCtx.drawImage(results.segmentationMask, 0, 0, canvasElement.width, canvasElement.height);
+
+      // Only overwrite existing pixels.
+      canvasCtx.globalCompositeOperation = 'source-in';
+      canvasCtx.fillStyle = '#00FF0000';
+      canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+
+      // Only overwrite missing pixels.
+      canvasCtx.globalCompositeOperation = 'destination-atop';
+      canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+      canvasCtx.globalCompositeOperation = 'source-over';
+      drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, { color: '#00FF00', lineWidth: 4 });
+      drawLandmarks(canvasCtx, results.poseLandmarks, { color: '#FF0000', lineWidth: 2 });
+      canvasCtx.restore();
+
+      //iterate result.poseLandmarks and update the sphere
+      for (let index = 0; index < results.poseLandmarks.length; index++) {
+        const element = results.poseLandmarks[index];
+        arrayOfSphere[index].position.x = element.x * 2;
+        arrayOfSphere[index].position.y = - element.y * 2;
+        arrayOfSphere[index].position.z = - element.z * 2
+      }
+      renderer.render(scene, cameraThree)
+      // window.requestAnimationFrame(tick);
+
+      grid.updateLandmarks(results.poseWorldLandmarks);
+    }
+
+    const pose = new Pose({
+      locateFile: (file) => {
+        return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
+      }
+    });
+
+    pose.setOptions({
+      modelComplexity: 1,
+      smoothLandmarks: true,
+      enableSegmentation: true,
+      smoothSegmentation: true,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+
+    pose.onResults(onResults);
+
+    const camera = new Camera(videoElement, {
+      onFrame: async () => {
+        await pose.send({ image: videoElement });
+      },
+      width: 400,
+      height: 235
+    });
+    camera.start();
+  </script>
+
+</html>
